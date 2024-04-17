@@ -1,4 +1,3 @@
-import datetime
 import logging
 import os
 from contextlib import closing
@@ -7,7 +6,8 @@ from psycopg2.extras import DictCursor
 from psql_exctractor import PSQLExtractor
 from dotenv import load_dotenv
 from elasticsearch import Elasticsearch
-from elastic_trans import ElasticLoad
+from elastic_load import ElasticLoad
+from transform import transform_data
 
 if __name__ == '__main__':
 
@@ -48,7 +48,7 @@ if __name__ == '__main__':
                 logging.info(create_idx_res)
 
             #Преобразовываем данные для загрузки в ES
-            data_to_load = ElasticLoad(es_conn, os.environ.get('ES_INDEX')).transform_data(trd_query)
+            data_to_load = transform_data(trd_query)
             for data in data_to_load:
                 logging.info(data)
 
