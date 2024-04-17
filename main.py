@@ -49,10 +49,10 @@ if __name__ == '__main__':
 
             #Преобразовываем данные для загрузки в ES
             data_to_load = ElasticLoad(es_conn, os.environ.get('ES_INDEX')).transform_data(trd_query)
-            logging.info(data_to_load)
+            for data in data_to_load:
+                logging.info(data)
 
             #Загружаем преобразованные данные
-            #save_es_res = ElasticLoad(es_conn, os.environ.get('ES_INDEX')).save_data(data_to_load['id'], data_to_load)
             save_es_res = ElasticLoad(es_conn, os.environ.get('ES_INDEX')).save_data(data_to_load)
             logging.info(save_es_res)
 

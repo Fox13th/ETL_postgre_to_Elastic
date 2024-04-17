@@ -6,7 +6,7 @@ from elasticsearch.helpers import bulk
 class DataMovies(BaseModel):
     id: str
     imdb_rating: float
-    #genres: str => list
+    # genres: str => list
     title: str
     description: str
     role: str
@@ -138,6 +138,13 @@ class ElasticLoad:
         resp = self.conn.indices.create(index=self.name_idx, settings=settings, mappings=mappings)
         return resp
 
+    def get_names(self, names: list):
+        names_list = []
+        if names is not None:
+            for name in names:
+                names_list.append(name['name'])
+        return names_list
+
     def transform_data(self, data_to_trans):
         """
         Преобразование данных в для загрузки в ElasticSearch
@@ -146,22 +153,18 @@ class ElasticLoad:
         """
         list_data_for_es = []
         for data in data_to_trans:
-            dict_data = {
-                'id': data[0],
-                'title': data[1],
-                'description': data[2],
-                'imdb_rating': data[3],
-                'directors': data[5],
-                'actors': data[6],
-                'writers': data[7]
-            }
-
-            genre_str = ""
-            for genre in data[4]:
-                genre_str += genre['name'] + ", "
-            dict_data['genres'] = genre_str[:-2]
-
-
+            dict_data = {'id': data[0],
+                         'title': data[1],
+                         'description': data[2],
+                         'imdb_rating': data[3],
+                         'directors': data[5],
+                         'actors': data[6],
+                         'writers': data[7],
+                         'genres': self.get_names(data[4]),
+                         'directors_names': self.get_names(data[5]),
+                         'actors_names': self.get_names(data[6]),
+                         'writers_names': self.get_names(data[7])
+                         }
 
             try:
                 DataMovies(**dict_data)
@@ -178,7 +181,7 @@ class ElasticLoad:
                 list_data_for_es.append(dict_data)
         return list_data_for_es
 
-    def save_data(self, docs):#id_idx, doc: dict):
+    def save_data(self, docs):  # id_idx, doc: dict):
         """
         Данная функция осуществляет загрузку данных в ElasticSearch
         :param docs:
@@ -187,11 +190,12 @@ class ElasticLoad:
         :param doc: Данные на загрузку
         :return:
         """
-        return bulk(self.conn, self.gendata(docs)) #self.conn.index(index=self.name_idx, id=id_idx, document=doc)
+        return bulk(self.conn, self.gendata(docs))  # self.conn.index(index=self.name_idx, id=id_idx, document=doc)
 
     def gendata(self, docs: list):
         for doc in docs:
             doc['_index'] = self.name_idx
+            doc['_id'] = doc['id']
             yield doc
 
     def get_data(self):
