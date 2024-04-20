@@ -1,5 +1,7 @@
 import logging
 
+import psycopg2
+
 
 def get_ids(pack_data):
     return tuple([id_pers[0] for id_pers in pack_data])
@@ -44,17 +46,18 @@ class PSQLExtractor:
                                  f"ARRAY_AGG(DISTINCT jsonb_build_object('id', person.id, 'name', person.full_name)) " \
                                  f"FILTER (WHERE person_film.role = 'actor') AS actors, " \
                                  f"ARRAY_AGG(DISTINCT jsonb_build_object('id', person.id, 'name', person.full_name)) " \
-                                 f"FILTER (WHERE person_film.role = 'writer') AS writers " \
+                                 f"FILTER (WHERE person_film.role = 'writer') AS writers, fw.modified " \
                                  f"FROM content.film_work fw " \
                                  f"LEFT JOIN content.genre_film_work AS genre_film ON fw.id = genre_film.film_work_id " \
                                  f"LEFT JOIN content.genre AS genre ON genre_film.genre_id = genre.id " \
                                  f"LEFT JOIN content.person_film_work AS person_film ON fw.id = person_film.film_work_id " \
                                  f"LEFT JOIN content.person AS person ON person_film.person_id = person.id " \
                                  f"WHERE fw.modified > '{data}' " \
-                                 f"GROUP BY fw.id "
+                                 f"GROUP BY fw.id ORDER BY fw.modified "
             self.curs.execute(psql_query)
             res_query = self.curs.fetchall()
+            #raise TypeError("Возникла ошибка типа поля 'modified'")
         except Exception as err:
             self.log.error(err)
-            res_query = None
+            exit()
         return res_query

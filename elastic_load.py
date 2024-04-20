@@ -1,5 +1,8 @@
 import logging
-from elasticsearch.helpers import bulk, streaming_bulk
+from elasticsearch.helpers import streaming_bulk
+from state_storage import JsonFileStorage
+import tqdm
+from transform import transform_data
 
 
 class ElasticLoad:
@@ -9,7 +12,37 @@ class ElasticLoad:
         self.name_idx = name_index
         self.log = logging.getLogger(self.__class__.__name__)
 
+    def save_data(self, res_query, file_state: str):
+        """
+        Данная функция осуществляет загрузку данных в ElasticSearch
+        :param res_query: Результат запроса, который подается на вход обработчику данных для загрузки в ES
+        :param file_state: JSON с состоянием загрузки
+        """
+        docs = transform_data(res_query)
+        logging.info("Полученные с PostgreSQL данные успешно обработаны!")
+
+        number_of_docs = len(docs)
+        progress = tqdm.tqdm(unit=" docs", total=number_of_docs)
+        successes = 0
+        for ok, action in streaming_bulk(
+                client=self.conn, index=self.name_idx, actions=self.generate_data(docs),
+        ):
+            progress.update(1)
+            print(res_query[successes][8])
+            JsonFileStorage(file_state).save_state({'modified': str(res_query[successes][8])})
+            successes += ok
+
+    def generate_data(self, docs: list):
+        for doc in docs:
+            doc['_index'] = self.name_idx
+            doc['_id'] = doc['id']
+            yield doc
+
     def create_idx(self):
+        """
+        Создание индекса по заранее опредленной структуре
+        :return:
+        """
         settings = {
             "refresh_interval": "1s",
             "analysis": {
@@ -125,31 +158,3 @@ class ElasticLoad:
 
         resp = self.conn.indices.create(index=self.name_idx, settings=settings, mappings=mappings)
         return resp
-
-    def save_data(self, docs):
-        """
-        Данная функция осуществляет загрузку данных в ElasticSearch
-        :param docs:
-        :param id_idx: ID документа
-        :param name_idx: Название индекса
-        :param doc: Данные на загрузку
-        :return:
-        """
-        return streaming_bulk(self.conn, index=self.name_idx, initial_backoff=2, max_backoff=100, actions=self.gendata(docs))    #bulk(self.conn, self.gendata(docs))  # self.conn.index(index=self.name_idx, id=id_idx, document=doc)
-
-    def gendata(self, docs: list):
-        for doc in docs:
-            doc['_index'] = self.name_idx
-            doc['_id'] = doc['id']
-            yield doc
-
-    def get_data(self):
-        """
-        Данная функция осуществляет получение данных по названию индекса и id документа
-        :param name_idx: Имя индекса
-        :param doc_id: ID документа
-        :return:
-        """
-        resp = self.conn.get(index=self.name_idx, id=1)
-        print(resp["_source"])
-        self.conn.indices.refresh(index=self.name_idx)

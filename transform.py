@@ -27,6 +27,7 @@ def transform_data(data_to_trans):
     :return: Преобразованные данные
     """
     list_data_for_es = []
+
     for data in data_to_trans:
         dict_data = {'id': data[0],
                      'title': data[1],

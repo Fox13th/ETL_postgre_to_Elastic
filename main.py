@@ -9,7 +9,7 @@ from psql_exctractor import PSQLExtractor
 from dotenv import load_dotenv
 from elasticsearch import Elasticsearch
 from elastic_load import ElasticLoad
-from transform import transform_data
+from state_storage import JsonFileStorage
 
 
 def backoff(start_sleep_time=0.1, factor=2, border_sleep_time=10):
@@ -53,8 +53,12 @@ def backoff(start_sleep_time=0.1, factor=2, border_sleep_time=10):
 
 @backoff(1, 2, 100)
 def main():
+    # Загрузка состояния по полю modified
+    file_state_path = os.environ.get('STATE_FILE')
+    if not os.path.exists(file_state_path):
+        JsonFileStorage(file_state_path).save_state({'modified': os.environ.get('START_DATE')})
+    load_state = JsonFileStorage(file_state_path).retrieve_state()
 
-    dt = '2020-06-16 23:14:09.320625+03:00'
     with closing(psycopg2.connect(**dsl, cursor_factory=DictCursor)) as pg_conn, \
             closing(Elasticsearch("http://localhost:9200/", max_retries=0)) as es_conn:
         psql_data = PSQLExtractor(pg_conn)
@@ -66,24 +70,26 @@ def main():
         # id_film = get_ids(snd_query)
         # trd_query = psql_data.extract_data('third', id_film)
         # =======================================================
-
         # Запрос кино
-        trd_query = psql_data.extract_data('film_work', dt)
-        # Если индекс осутсвует, то создаем
-        if not es_conn.indices.exists(index=os.environ.get('ES_INDEX')):
-            create_idx_res = ElasticLoad(es_conn, os.environ.get('ES_INDEX')).create_idx()
-            logging.info(create_idx_res)
+        try:
+            # Проверка на существования ключа и походящего типа
+            dt = load_state['modified']
+        except KeyError:
+            logging.error(f"Остуствие ключа 'modified' => в качестве начального значения берем по умолчанию")
+            load_state['modified'] = os.environ.get('START_DATE')
+        finally:
+            trd_query = psql_data.extract_data('film_work', dt)
+            # ===========================================================
+            # --------------------ElasticSearch--------------------------
+            # ===========================================================
+            client_db = ElasticLoad(es_conn, os.environ.get('ES_INDEX'))
+            # Если индекс осутсвует, то создаем
+            if not es_conn.indices.exists(index=os.environ.get('ES_INDEX')):
+                create_idx_res = client_db.create_idx()
+                logging.info(create_idx_res)
 
-        # Преобразовываем данные для загрузки в ES
-        data_to_load = transform_data(trd_query)
-        for data in data_to_load:
-            logging.info(data)
-
-        # Загружаем преобразованные данные
-        save_es_res = ElasticLoad(es_conn, os.environ.get('ES_INDEX')).save_data(data_to_load)
-        logging.info(save_es_res)
-
-        # ElasticLoad(es_conn, "test_fw").get_data()
+            logging.info(f"Загрузка данных начиная с {dt}")
+            client_db.save_data(trd_query, file_state_path)
 
 
 if __name__ == '__main__':
@@ -100,8 +106,6 @@ if __name__ == '__main__':
         'port': os.environ.get('PORT'),
     }
 
-    # dt = datetime.datetime(2021, 6, 16, 23, 14, 9, 320625,
-    #                       tzinfo=datetime.timezone(datetime.timedelta(seconds=10800)))
     main()
 
     logging.info("Работа программы завершена!")
