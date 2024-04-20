@@ -1,5 +1,5 @@
 import logging
-from elasticsearch.helpers import bulk
+from elasticsearch.helpers import bulk, streaming_bulk
 
 
 class ElasticLoad:
@@ -135,7 +135,7 @@ class ElasticLoad:
         :param doc: Данные на загрузку
         :return:
         """
-        return bulk(self.conn, self.gendata(docs))  # self.conn.index(index=self.name_idx, id=id_idx, document=doc)
+        return streaming_bulk(self.conn, index=self.name_idx, initial_backoff=2, max_backoff=100, actions=self.gendata(docs))    #bulk(self.conn, self.gendata(docs))  # self.conn.index(index=self.name_idx, id=id_idx, document=doc)
 
     def gendata(self, docs: list):
         for doc in docs:

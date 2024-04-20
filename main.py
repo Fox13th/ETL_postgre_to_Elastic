@@ -1,14 +1,10 @@
 import time
-
 import logging
 import os
 from contextlib import closing
-
 import elastic_transport
 import psycopg2
 from psycopg2.extras import DictCursor
-from urllib3.exceptions import NewConnectionError
-
 from psql_exctractor import PSQLExtractor
 from dotenv import load_dotenv
 from elasticsearch import Elasticsearch
@@ -37,59 +33,60 @@ def backoff(start_sleep_time=0.1, factor=2, border_sleep_time=10):
             while True:
                 try:
                     return func(*args, **kwargs)
-                except psycopg2.OperationalError:
+                except (psycopg2.OperationalError, elastic_transport.ConnectionError) as error:
                     if curr_sleep_time < border_sleep_time:
                         curr_sleep_time = start_sleep_time * factor ** iteration
 
                     if curr_sleep_time > border_sleep_time:
                         curr_sleep_time = border_sleep_time
 
+                    logging.error(f"Остуствует соединение. Повторное подключение через {curr_sleep_time} сек.")
+                    logging.error(error)
+
                     time.sleep(curr_sleep_time)
                     iteration += 1
 
         return inner
+
     return func_wrapper
 
 
-@backoff()
+@backoff(1, 2, 100)
 def main():
-    try:
-        dt = '2020-06-16 23:14:09.320625+03:00'
-        with closing(psycopg2.connect(**dsl, cursor_factory=DictCursor)) as pg_conn, \
-                closing(Elasticsearch("http://localhost:9200/")) as es_conn:
-            psql_data = PSQLExtractor(pg_conn)
 
-            # Для запрос по Persons=================================
-            # fst_query = psql_data.extract_data('first', dt)
-            # id_person = get_ids(fst_query)
-            # snd_query = psql_data.extract_data('second', id_person)
-            # id_film = get_ids(snd_query)
-            # trd_query = psql_data.extract_data('third', id_film)
-            # =======================================================
+    dt = '2020-06-16 23:14:09.320625+03:00'
+    with closing(psycopg2.connect(**dsl, cursor_factory=DictCursor)) as pg_conn, \
+            closing(Elasticsearch("http://localhost:9200/", max_retries=0)) as es_conn:
+        psql_data = PSQLExtractor(pg_conn)
 
-            # Запрос кино
-            trd_query = psql_data.extract_data('film_work', dt)
-            # Если индекс осутсвует, то создаем
-            if not es_conn.indices.exists(index=os.environ.get('ES_INDEX')):
-                create_idx_res = ElasticLoad(es_conn, os.environ.get('ES_INDEX')).create_idx()
-                logging.info(create_idx_res)
+        # Для запрос по Persons=================================
+        # fst_query = psql_data.extract_data('first', dt)
+        # id_person = get_ids(fst_query)
+        # snd_query = psql_data.extract_data('second', id_person)
+        # id_film = get_ids(snd_query)
+        # trd_query = psql_data.extract_data('third', id_film)
+        # =======================================================
 
-            # Преобразовываем данные для загрузки в ES
-            data_to_load = transform_data(trd_query)
-            for data in data_to_load:
-                logging.info(data)
+        # Запрос кино
+        trd_query = psql_data.extract_data('film_work', dt)
+        # Если индекс осутсвует, то создаем
+        if not es_conn.indices.exists(index=os.environ.get('ES_INDEX')):
+            create_idx_res = ElasticLoad(es_conn, os.environ.get('ES_INDEX')).create_idx()
+            logging.info(create_idx_res)
 
-            # Загружаем преобразованные данные
-            save_es_res = ElasticLoad(es_conn, os.environ.get('ES_INDEX')).save_data(data_to_load)
-            logging.info(save_es_res)
+        # Преобразовываем данные для загрузки в ES
+        data_to_load = transform_data(trd_query)
+        for data in data_to_load:
+            logging.info(data)
 
-            # ElasticLoad(es_conn, "test_fw").get_data()
-    except Exception as err:
-        logging.error(err)
+        # Загружаем преобразованные данные
+        save_es_res = ElasticLoad(es_conn, os.environ.get('ES_INDEX')).save_data(data_to_load)
+        logging.info(save_es_res)
+
+        # ElasticLoad(es_conn, "test_fw").get_data()
 
 
 if __name__ == '__main__':
-
     logging.basicConfig(level=logging.INFO, format="[%(asctime)s] [%(levelname)s] %(message)s")
     logging.info("Начало работы программы")
 
@@ -103,13 +100,8 @@ if __name__ == '__main__':
         'port': os.environ.get('PORT'),
     }
 
-    try:
-        #dt = datetime.datetime(2021, 6, 16, 23, 14, 9, 320625,
-        #                       tzinfo=datetime.timezone(datetime.timedelta(seconds=10800)))
-        main()
+    # dt = datetime.datetime(2021, 6, 16, 23, 14, 9, 320625,
+    #                       tzinfo=datetime.timezone(datetime.timedelta(seconds=10800)))
+    main()
 
-    except Exception as error:
-        logging.error(error)
-
-    finally:
-        logging.info("Работа программы завершена!")
+    logging.info("Работа программы завершена!")
