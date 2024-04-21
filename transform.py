@@ -1,15 +1,20 @@
+import logging
+
 from pydantic import BaseModel
 
 
 class DataMovies(BaseModel):
     id: str
-    imdb_rating: float
-    genres: list
     title: str
     description: str
-    role: str
-    id_pers: str
-    full_name: str
+    imdb_rating: float
+    directors: list
+    actors: list
+    writers: list
+    directors_names: list
+    actors_names: list
+    writers_names: list
+    genres: list
 
 
 def get_names(names: list):
@@ -36,7 +41,7 @@ def transform_data(data_to_trans):
                      'directors': data[5],
                      'actors': data[6],
                      'writers': data[7],
-                     'genres': get_names(data[4]),
+                     'genres': data[4],
                      'directors_names': get_names(data[5]),
                      'actors_names': get_names(data[6]),
                      'writers_names': get_names(data[7])
@@ -50,9 +55,15 @@ def transform_data(data_to_trans):
                 match val_err['type']:
                     case 'string_type':
                         if not dict_data[val_err['loc'][0]] is None:
-                            raise ValueError(f"Type of '{val_err['loc'][0]}' is invalid. It's not a string type.")
+                            logging.error(f"Type of '{val_err['loc'][0]}' is invalid. It's not a string type.")
+                            exit()
                     case 'float_parsing':
-                        raise ValueError(f"Type of '{val_err['loc'][0]}' is invalid. It's not a float type.")
+                        logging.error(f"Type of '{val_err['loc'][0]}' is invalid. It's not a float type.")
+                        exit()
+                    case 'list_type':
+                        if not dict_data[val_err['loc'][0]] is None:
+                            logging.error(f"Type of '{val_err['loc'][0]}' is invalid. It's not a list type.")
+                            exit()
         finally:
             list_data_for_es.append(dict_data)
     return list_data_for_es

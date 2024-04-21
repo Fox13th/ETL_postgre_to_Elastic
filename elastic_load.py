@@ -1,8 +1,8 @@
 import logging
 from elasticsearch.helpers import streaming_bulk
-from state_storage import JsonFileStorage
-import tqdm
+from state_storage import State, JsonFileStorage
 from transform import transform_data
+import tqdm
 
 
 class ElasticLoad:
@@ -24,12 +24,13 @@ class ElasticLoad:
         number_of_docs = len(docs)
         progress = tqdm.tqdm(unit=" docs", total=number_of_docs)
         successes = 0
+
         for ok, action in streaming_bulk(
                 client=self.conn, index=self.name_idx, actions=self.generate_data(docs),
         ):
             progress.update(1)
-            print(res_query[successes][8])
-            JsonFileStorage(file_state).save_state({'modified': str(res_query[successes][8])})
+            #Сохранение полей modified для person и genre
+            State(JsonFileStorage(file_state)).set_state('modified', str(res_query[successes][8]))
             successes += ok
 
     def generate_data(self, docs: list):
@@ -156,5 +157,4 @@ class ElasticLoad:
             }
         }
 
-        resp = self.conn.indices.create(index=self.name_idx, settings=settings, mappings=mappings)
-        return resp
+        return self.conn.indices.create(index=self.name_idx, settings=settings, mappings=mappings)
